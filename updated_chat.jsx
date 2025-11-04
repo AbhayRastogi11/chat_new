@@ -26,7 +26,7 @@ export default function ChatPage() {
   const [userHasScrolled, setUserHasScrolled] = useState(false);
   const [isNearBottom, setIsNearBottom] = useState(true);
 
-  // NEW: chat container ref + onScroll handler
+  // chat container ref + onScroll handler
   const chatRef = useRef(null);
   const SCROLL_THRESHOLD = 24;
 
@@ -76,23 +76,22 @@ export default function ChatPage() {
     setUserHasScrolled(false);
     setIsNearBottom(true);
 
-    // 🔵 NEW: placeholder assistant bubble with animated dots during auth delay
+    // 🔵 placeholder assistant bubble — ONLY DOTS animation
     const placeholderId = Date.now() + 1;
     let assistantMsg = {
       id: placeholderId,
       role: "assistant",
-      content: "Typing", // dots will animate via interval
+      content: ".", // start with a single dot
       time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
     let messageAdded = true;
     setMessages((prev) => [...prev, assistantMsg]);
 
-    // simple dot animation (., .., ... loop) until TEXT_MESSAGE_START
-    let dotCount = 0;
+    // dots animation (., .., ...) until TEXT_MESSAGE_START
+    let dotCount = 1;
     let typingInterval = setInterval(() => {
-      dotCount = (dotCount + 1) % 4; // 0..3
-      const dots = ".".repeat(dotCount);
-      assistantMsg.content = `Typing${dots}`;
+      dotCount = (dotCount % 3) + 1; // 1..3
+      assistantMsg.content = ".".repeat(dotCount);
       setMessages((prev) => {
         const updated = [...prev];
         const lastIndex = updated.length - 1;
@@ -146,7 +145,7 @@ export default function ChatPage() {
 
                 case "TEXT_MESSAGE_START":
                   setCurrentStatus("typing...");
-                  // stop typing animation & clear bubble content to start streaming
+                  // stop dots animation & clear bubble content to start streaming
                   clearInterval(typingInterval);
                   typingInterval = null;
                   assistantMsg.content = "";
@@ -294,7 +293,7 @@ export default function ChatPage() {
       <header className="chat-header">
         <div className="chat-header-left">
           <div className="avatar-bot" style={{ width: 28, height: 28, overflow: "hidden", borderRadius: 6 }}>
-            {/* IndiGo logo (SVG from Wikimedia Commons) */}
+            {/* IndiGo logo (SVG URL) */}
             <img
               src="https://commons.wikimedia.org/wiki/Special:FilePath/IndiGo_Airlines_logo.svg"
               alt="IndiGo logo"
@@ -330,7 +329,7 @@ export default function ChatPage() {
 
             return (
               <React.Fragment key={msg.id}>
-                {/* 🔹 RUN STATUS inside chat (stages) + Tool calls, only for last assistant turn */}
+                {/* 🔹 RUN STATUS inside chat (ONLY status chip; no tool-call chips) */}
                 {msg.role === "assistant" && isLastAssistantMsg && (isLoading || toolCalls.length > 0 || currentStatus !== "online") && (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
@@ -344,7 +343,7 @@ export default function ChatPage() {
                       border: "1px solid #e2e8f0",
                     }}
                   >
-                    {/* Stage chips */}
+                    {/* Status chip only */}
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: toolCalls.length ? 8 : 0 }}>
                       <span style={{
                         fontSize: "0.72rem",
@@ -359,25 +358,9 @@ export default function ChatPage() {
                       }}>
                         <Sparkles size={12} /> {currentStatus}
                       </span>
-
-                      {toolCalls.map(tc => (
-                        <span key={`chip-${tc.id}`} style={{
-                          fontSize: "0.72rem",
-                          padding: "4px 8px",
-                          borderRadius: "999px",
-                          background: tc.status === "completed" ? "#ecfeff" : "#fff7ed",
-                          border: "1px solid #e2e8f0",
-                          color: tc.status === "completed" ? "#155e75" : "#9a3412",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6
-                        }}>
-                          <Wrench size={12} /> {tc.name}: {tc.status === "completed" ? "done" : "running"}
-                        </span>
-                      ))}
                     </div>
 
-                    {/* Tool calls panel */}
+                    {/* Tool calls panel (dropdown list) */}
                     {toolCalls.length > 0 && (
                       <div
                         className="tool-calls-container"
@@ -505,7 +488,6 @@ export default function ChatPage() {
         </div>
       </footer>
 
-      {/* simple keyframes (if you want to hook future CSS animations) */}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
