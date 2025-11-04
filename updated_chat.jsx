@@ -57,6 +57,17 @@ export default function ChatPage() {
     }
   }, [messages, toolCalls, isNearBottom]);
 
+  // util: pretty JSON if possible
+  const tryPrettyJson = (text) => {
+    if (!text || typeof text !== "string") return null;
+    try {
+      const obj = JSON.parse(text);
+      return JSON.stringify(obj, null, 2);
+    } catch {
+      return null;
+    }
+  };
+
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -76,22 +87,22 @@ export default function ChatPage() {
     setUserHasScrolled(false);
     setIsNearBottom(true);
 
-    // 🔵 placeholder assistant bubble — ONLY DOTS animation
+    // 🔵 placeholder assistant bubble — BIG DOTS animation (●), 1..7 dots loop
     const placeholderId = Date.now() + 1;
     let assistantMsg = {
       id: placeholderId,
       role: "assistant",
-      content: ".", // start with a single dot
+      content: "●", // start with one large dot
       time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
     let messageAdded = true;
     setMessages((prev) => [...prev, assistantMsg]);
 
-    // dots animation (., .., ...) until TEXT_MESSAGE_START
+    // dots animation (●, ●●, ... up to 7) — DO NOT stop on TEXT_MESSAGE_START
     let dotCount = 1;
     let typingInterval = setInterval(() => {
-      dotCount = (dotCount % 3) + 1; // 1..3
-      assistantMsg.content = ".".repeat(dotCount);
+      dotCount = dotCount >= 7 ? 1 : dotCount + 1; // 1..7
+      assistantMsg.content = "●".repeat(dotCount);
       setMessages((prev) => {
         const updated = [...prev];
         const lastIndex = updated.length - 1;
@@ -100,7 +111,10 @@ export default function ChatPage() {
         }
         return updated;
       });
-    }, 400);
+    }, 350);
+
+    // firstContent flag to clear dots exactly on first delta
+    let firstContentArrived = false;
 
     try {
       const response = await fetch(
@@ -145,21 +159,28 @@ export default function ChatPage() {
 
                 case "TEXT_MESSAGE_START":
                   setCurrentStatus("typing...");
-                  // stop dots animation & clear bubble content to start streaming
-                  clearInterval(typingInterval);
-                  typingInterval = null;
-                  assistantMsg.content = "";
-                  setMessages((prev) => {
-                    const updated = [...prev];
-                    const lastIndex = updated.length - 1;
-                    if (lastIndex >= 0 && updated[lastIndex].id === assistantMsg.id) {
-                      updated[lastIndex] = { ...assistantMsg };
-                    }
-                    return updated;
-                  });
+                  // ⛔️ do NOT stop dots here — wait for first delta
                   break;
 
                 case "TEXT_MESSAGE_CONTENT":
+                  // On FIRST delta, stop dots & clear typing bubble
+                  if (!firstContentArrived) {
+                    firstContentArrived = true;
+                    if (typingInterval) {
+                      clearInterval(typingInterval);
+                      typingInterval = null;
+                    }
+                    assistantMsg.content = "";
+                    setMessages((prev) => {
+                      const updated = [...prev];
+                      const lastIndex = updated.length - 1;
+                      if (lastIndex >= 0 && updated[lastIndex].id === assistantMsg.id) {
+                        updated[lastIndex] = { ...assistantMsg };
+                      }
+                      return updated;
+                    });
+                  }
+                  // Append streaming content
                   assistantMsg.content += event.delta;
                   setMessages((prev) => {
                     const updated = [...prev];
@@ -255,7 +276,7 @@ export default function ChatPage() {
         clearInterval(typingInterval);
         typingInterval = null;
       }
-      // convert typing bubble into generic error if stream failed early
+      // convert the typing bubble into generic error if stream failed early
       assistantMsg.content = "Sorry, an error occurred. Please try again.";
       setMessages((prev) => {
         const updated = [...prev];
@@ -386,64 +407,84 @@ export default function ChatPage() {
                           Tool Calls
                         </div>
 
-                        {toolCalls.map((tc) => (
-                          <div
-                            key={tc.id}
-                            style={{
-                              background: "white",
-                              borderRadius: "8px",
-                              padding: "8px 10px",
-                              marginBottom: "6px",
-                              fontSize: "0.72rem",
-                              border: "1px solid #e0e7ff",
-                            }}
-                          >
-                            {/* Dropdown Header */}
+                        {toolCalls.map((tc) => {
+                          const prettyArgs = tryPrettyJson(tc.args);
+                          const prettyResult = tryPrettyJson(tc.result);
+                          return (
                             <div
-                              onClick={() =>
-                                setToolCalls((prev) =>
-                                  prev.map((tool) =>
-                                    tool.id === tc.id ? { ...tool, expanded: !tool.expanded } : tool
-                                  )
-                                )
-                              }
+                              key={tc.id}
                               style={{
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                cursor: "pointer",
-                                userSelect: "none",
+                                background: "white",
+                                borderRadius: "8px",
+                                padding: "8px 10px",
+                                marginBottom: "6px",
+                                fontSize: "0.72rem",
+                                border: "1px solid #e0e7ff",
                               }}
                             >
-                              <strong style={{ color: "#1e293b" }}>{tc.name}</strong>
-                              {tc.expanded ? "▲" : "▼"}
-                            </div>
-
-                            {/* Dropdown Content */}
-                            {tc.expanded && (
+                              {/* Dropdown Header */}
                               <div
+                                onClick={() =>
+                                  setToolCalls((prev) =>
+                                    prev.map((tool) =>
+                                      tool.id === tc.id ? { ...tool, expanded: !tool.expanded } : tool
+                                    )
+                                  )
+                                }
                                 style={{
-                                  marginTop: "8px",
-                                  paddingLeft: "16px",
-                                  color: "#4b5563",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  cursor: "pointer",
+                                  userSelect: "none",
                                 }}
                               >
-                                <div>
-                                  <strong>Args:</strong> {tc.args || "N/A"}
-                                </div>
-                                {tc.result && (
-                                  <div>
-                                    <strong>Result:</strong> {tc.result}
-                                  </div>
-                                )}
-                                <div>
-                                  <strong>Status:</strong>{" "}
-                                  {tc.status === "completed" ? "Completed" : "In Progress"}
-                                </div>
+                                <strong style={{ color: "#1e293b" }}>{tc.name}</strong>
+                                {tc.expanded ? "▲" : "▼"}
                               </div>
-                            )}
-                          </div>
-                        ))}
+
+                              {/* Dropdown Content */}
+                              {tc.expanded && (
+                                <div
+                                  style={{
+                                    marginTop: "8px",
+                                    paddingLeft: "16px",
+                                    color: "#4b5563",
+                                  }}
+                                >
+                                  <div style={{ marginBottom: 6 }}>
+                                    <strong>Args:</strong>
+                                    {prettyArgs ? (
+                                      <pre style={{ margin: "6px 0 0", whiteSpace: "pre-wrap", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: "12px" }}>
+                                        {prettyArgs}
+                                      </pre>
+                                    ) : (
+                                      <> {tc.args || "N/A"}</>
+                                    )}
+                                  </div>
+
+                                  {tc.result && (
+                                    <div style={{ marginTop: 6 }}>
+                                      <strong>Result:</strong>
+                                      {prettyResult ? (
+                                        <pre style={{ margin: "6px 0 0", whiteSpace: "pre-wrap", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: "12px" }}>
+                                          {prettyResult}
+                                        </pre>
+                                      ) : (
+                                        <> {tc.result}</>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  <div style={{ marginTop: 6 }}>
+                                    <strong>Status:</strong>{" "}
+                                    {tc.status === "completed" ? "Completed" : "In Progress"}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </motion.div>
